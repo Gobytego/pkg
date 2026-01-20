@@ -1,0 +1,156 @@
+#!/bin/bash
+
+## Gobytego Universal package commands
+## This is a small helper for people like me who use many linux distros 
+## and don't want to remember every package managers list of commands.
+## This doesn't cover all the commands but will get most out of the way 
+## for you.
+
+# Detect Package Manager
+if command -v nala >/dev/null 2>&1; then
+    PM="nala"
+elif command -v apt >/dev/null 2>&1; then
+    PM="apt"
+elif command -v dnf >/dev/null 2>&1; then
+    PM="dnf"
+elif command -v pacman >/dev/null 2>&1; then
+    PM="pacman"
+elif command -v zypper >/dev/null 2>&1; then
+    PM="zypper"
+elif command -v eopkg >/dev/null 2>&1; then
+    PM="eopkg"
+elif command -v xbps-install >/dev/null 2>&1; then
+    PM="xbps"
+elif command -v apk >/dev/null 2>&1; then
+    PM="apk"
+elif command -v emerge >/dev/null 2>&1; then
+    PM="emerge"
+elif command -v nix-env >/dev/null 2>&1; then
+    PM="nix"
+else
+    echo "Error: No supported package manager detected."
+    exit 1
+fi
+
+ACTION=$1
+shift
+
+run_priv() {
+    if [ "$EUID" -ne 0 ]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
+
+case $ACTION in
+    it|install)
+        case $PM in
+            pacman) run_priv pacman -Syu "$@" ;;
+            xbps)   run_priv xbps-install -S "$@" ;;
+            emerge) run_priv emerge -av "$@" ;;
+            nix)    nix-env -iA nixpkgs."$@" ;;
+            eopkg)  run_priv eopkg it "$@" ;;
+            apk)    run_priv apk add "$@" ;;
+            *)      run_priv $PM install "$@" ;;
+        esac
+        ;;
+
+    sr|search)
+        case $PM in
+            pacman) pacman -Ss "$@" ;;
+            xbps)   xbps-query -Rs "$@" ;;
+            emerge) emerge --search "$@" ;;
+            nix)    nix-env -qaP "$@" ;;
+            eopkg)  eopkg sr "$@" ;;
+            apk)    apk search "$@" ;;
+            *)      $PM search "$@" ;;
+        esac
+        ;;
+
+    rm|remove)
+        case $PM in
+            pacman) run_priv pacman -Rs "$@" ;;
+            xbps)   run_priv xbps-remove "$@" ;;
+            emerge) run_priv emerge --deselect "$@" ;;
+            nix)    nix-env -e "$@" ;;
+            eopkg)  run_priv eopkg rm "$@" ;;
+            apk)    run_priv apk del "$@" ;;
+            *)      run_priv $PM remove "$@" ;;
+        esac
+        ;;
+
+    pr|purge)
+        case $PM in
+            apt|nala) run_priv $PM purge "$@" ;;
+            pacman)   run_priv pacman -Rns "$@" ;;
+            dnf)      run_priv dnf remove "$@" ;;
+            xbps)     run_priv xbps-remove -R "$@" ;;
+            emerge)   run_priv emerge -C "$@" ;;
+            eopkg)    run_priv eopkg rm "$@" ;;
+            apk)      run_priv apk del --purge "$@" ;;
+            *)        run_priv $PM remove "$@" ;;
+        esac
+        ;;
+
+    ud|update)
+        case $PM in
+            apt|nala) run_priv $PM update ;;
+            dnf)      run_priv dnf check-update ;;
+            pacman)   run_priv pacman -Sy ;;
+            zypper)   run_priv zypper refresh ;;
+            xbps)     run_priv xbps-install -S ;;
+            emerge)   run_priv emerge --sync ;;
+            eopkg)    run_priv eopkg ur ;;
+            apk)      run_priv apk update ;;
+            nix)      nix-channel --update ;;
+            *)        echo "Update not applicable/supported for $PM" ;;
+        esac
+        ;;
+
+    ug|upgrade|up)
+        case $PM in
+            apt|nala) run_priv $PM upgrade ;;
+            pacman)   run_priv pacman -Syu ;;
+            zypper)   run_priv zypper update ;;
+            xbps)     run_priv xbps-install -Su ;;
+            emerge)   run_priv emerge -uDU @world ;;
+            eopkg)    run_priv eopkg up ;;
+            apk)      run_priv apk upgrade ;;
+            nix)      nix-env -u ;;
+            *)        run_priv $PM upgrade ;;
+        esac
+        ;;
+
+    cl|clean)
+        case $PM in
+            apt|nala) run_priv $PM autoremove && run_priv $PM clean ;;
+            dnf)      run_priv dnf autoremove ;;
+            pacman)   run_priv pacman -Sc ;;
+            zypper)   run_priv zypper clean ;;
+            xbps)     run_priv xbps-remove -O ;;
+            emerge)   run_priv emerge --depclean ;;
+            eopkg)    run_priv eopkg dc ;;
+            apk)      run_priv apk cache clean ;;
+            nix)      nix-collect-garbage -d ;;
+            *)        echo "Cleanup not implemented for $PM" ;;
+        esac
+        ;;
+
+    -h|--help|?|*)
+        echo "---------------------------------------------------"
+        echo " PKG - Universal Wrapper (Detected: $PM)"
+        echo "---------------------------------------------------"
+        echo " Usage: pkg [action] [package]"
+        echo ""
+        echo " Actions:"
+        echo "   it, install      : Install package"
+        echo "   sr, search       : Search repositories"
+        echo "   rm, remove       : Remove package"
+        echo "   pr, purge        : Deep remove"
+        echo "   ud, update       : Refresh repo lists"
+        echo "   ug, up, upgrade  : System upgrade" 
+        echo "   cl, clean        : Remove orphans/cache"
+        echo "---------------------------------------------------"
+        ;;
+esac
